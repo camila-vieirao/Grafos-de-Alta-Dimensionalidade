@@ -5,16 +5,12 @@ from collections import deque, defaultdict
 class Graph:
     def __init__(self, directed=False):
         self.directed = directed
-        # adjacency: node -> dict(neighbor -> weight)
         self.adj = defaultdict(dict)
         self.nodes_set = set()
 
-    # -------------------------
-    # Basic operations
-    # -------------------------
     def add_node(self, v):
         self.nodes_set.add(v)
-        _ = self.adj[v]  # ensure entry
+        _ = self.adj[v]
 
     def add_edge(self, u, v, weight=1.0):
         self.add_node(u)
@@ -59,9 +55,7 @@ class Graph:
                         seen.add(key)
                         yield (u, v, w)
 
-    # -------------------------
-    # Pajek I/O
-    # -------------------------
+    # PAJEK
     def save_pajek(self, filename):
         nodes = sorted(self.nodes())
         index = {v: i + 1 for i, v in enumerate(nodes)}
@@ -151,9 +145,7 @@ class Graph:
             i += 1
         return g
 
-    # -------------------------
-    # Connectivity & components
-    # -------------------------
+    # Connectivity and components
     def _bfs(self, start, use_undirected=False):
         seen = set()
         q = deque([start])
@@ -163,7 +155,6 @@ class Graph:
             # neighbors in directed or undirected view
             nbrs = set(self.adj[u].keys())
             if use_undirected:
-                # include incoming edges
                 for x in self.adj:
                     if u in self.adj[x]:
                         nbrs.add(x)
@@ -176,18 +167,17 @@ class Graph:
     def is_connected(self):
         if not self.nodes_set:
             return True
-        # For undirected: standard connectivity
+        # For undirected:
         if not self.directed:
             start = next(iter(self.nodes_set))
             seen = self._bfs(start, use_undirected=False)
             return len(seen) == len(self.nodes_set)
-        # For directed: check weak connectivity (problem asks: consider weakly connected components for directed)
+        # For directed: (WEAK)
         start = next(iter(self.nodes_set))
         seen = self._bfs(start, use_undirected=True)
         return len(seen) == len(self.nodes_set)
 
     def components(self):
-        # returns list of sets (weak components if directed)
         remaining = set(self.nodes_set)
         comps = []
         use_undirected = self.directed
@@ -198,42 +188,27 @@ class Graph:
             remaining -= comp
         return comps
 
-    # -------------------------
-    # Eulerian
-    # -------------------------
     def is_eulerian(self):
-        # Check Eulerian circuit condition
-        # Undirected: graph is connected (ignoring isolated vertices?) and all degrees even
-        # Directed: every vertex in-degree == out-degree and all vertices with degree>0 in single strongly connected component
-        # Here we'll check for Eulerian circuit
-        # Consider only nodes with degree>0
         non_isolated = {v for v in self.nodes_set if (self.degree(v) > 0 or (self.directed and (self.indegree(v) > 0 or self.outdegree(v)>0)))}
         if not non_isolated:
-            return False  # trivial: no edges -> not Eulerian by convention
+            return False
         if not self.directed:
-            # connected in undirected view?
             start = next(iter(non_isolated))
             seen = self._bfs(start, use_undirected=False)
             if not non_isolated.issubset(seen):
                 return False
-            # all degrees even
             for v in non_isolated:
                 if self.degree(v) % 2 != 0:
                     return False
             return True
         else:
-            # in-degree == out-degree for all nodes
             for v in non_isolated:
                 if self.indegree(v) != self.outdegree(v):
                     return False
-            # need strongly connected on nodes with edges.
-            # Quick check: make undirected connected
             start = next(iter(non_isolated))
             seen = self._bfs(start, use_undirected=True)
             if not non_isolated.issubset(seen):
                 return False
-            # Strong connectivity check (Kosaraju) on subgraph of non_isolated
-            # Build adjacency lists restricted
             def kosaraju():
                 visited = set()
                 order = []
@@ -246,7 +221,6 @@ class Graph:
                 for u in non_isolated:
                     if u not in visited:
                         dfs(u)
-                # transpose graph
                 rev = defaultdict(list)
                 for u in non_isolated:
                     for v in self.adj[u]:
@@ -258,14 +232,10 @@ class Graph:
                     for v in rev[u]:
                         if v not in visited2:
                             dfs2(v)
-                # process in reverse order
                 dfs2(order[-1])
                 return visited2 == non_isolated
             return kosaraju()
 
-    # -------------------------
-    # Cycle detection
-    # -------------------------
     def is_cyclic(self):
         if self.directed:
             # DFS with recursion stack
@@ -304,9 +274,7 @@ class Graph:
                         return True
             return False
 
-    # -------------------------
-    # Shortest paths (Dijkstra)
-    # -------------------------
+    # DIJKSTRA
     def _dijkstra(self, source):
         dist = {v: float('inf') for v in self.nodes_set}
         dist[source] = 0.0
@@ -322,13 +290,12 @@ class Graph:
                     heapq.heappush(pq, (nd, v))
         return dist
 
-    # -------------------------
     # Closeness centrality (proximity)
-    # -------------------------
     def closeness_centrality(self):
         n = len(self.nodes_set)
         closeness = {}
-        for u in self.nodes_set:
+        nodes_list = list(self.nodes_set)
+        for idx, u in enumerate(nodes_list):
             dist = self._dijkstra(u)
             total = 0.0
             reachable = 0
@@ -339,20 +306,16 @@ class Graph:
                     total += d
                     reachable += 1
             if total > 0 and reachable > 0:
-                # standard normalization: (reachable)/(n-1) * (reachable / total)
                 closeness[u] = (reachable / (n - 1)) * (reachable / total)
             else:
                 closeness[u] = 0.0
         return closeness
 
-    # -------------------------
-    # Betweenness centrality (Brandes, weighted)
-    # -------------------------
+    # Betweenness centrality
     def betweenness_centrality(self, normalized=True):
-        # Brandes algorithm for weighted graphs
         nodes = list(self.nodes_set)
         CB = dict((v, 0.0) for v in nodes)
-        for s in nodes:
+        for idx, s in enumerate(nodes):
             # Single-source shortest-paths
             S = []
             P = dict((v, []) for v in nodes)  # predecessors
