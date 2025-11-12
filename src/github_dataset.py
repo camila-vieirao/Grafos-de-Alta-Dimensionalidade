@@ -1,180 +1,111 @@
 import csv
-import json
+from collections import Counter
 from graph import Graph
 
-def load_github_dataset(edges_file, target_file, features_file=None, max_nodes=5000, max_edges=20000):
-    print("=== LOADING GITHUB DATASET ===")
-    print(f"Target: exactly {max_nodes} nodes, exactly {max_edges} edges\n")
+def carregar_dataset_github():
+    print("=== CARREGANDO DATASET GITHUB ===\n")
     
-    all_node_info = {}
-    print(f"Loading all node metadata from {target_file}...")
-    with open(target_file, 'r', encoding='utf8') as f:
+    usuarios = {}
+    print("Carregando usuários...")
+    with open("musae_git_target.csv", 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            node_id = row['id']
-            name = row.get('name', node_id)
-            ml_target = row.get('ml_target', '0')
-            all_node_info[node_id] = {
-                'name': name,
-                'label': ml_target
-            }
+            id_usuario = row['id']
+            nome = row.get('name', id_usuario)
+            usuarios[id_usuario] = nome
     
-    print(f"Loaded metadata for {len(all_node_info)} nodes")
+    print(f"Carregados {len(usuarios)} usuários")
     
-    print(f"\nLoading edges from {edges_file} (will load extra to ensure {max_edges} valid edges)...")
-    all_edges = []
-    nodes_in_edges = set()
-    
-    with open(edges_file, 'r', encoding='utf8') as f:
+    print("\nCarregando conexões...")
+    conexoes = []
+    with open("musae_git_edges.csv", 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            id_1 = row['id_1']
-            id_2 = row['id_2']
-            
-            if id_1 not in all_node_info:
-                all_node_info[id_1] = {'name': f"User_{id_1}", 'label': '0'}
-            if id_2 not in all_node_info:
-                all_node_info[id_2] = {'name': f"User_{id_2}", 'label': '0'}
-            
-            all_edges.append((id_1, id_2))
-            nodes_in_edges.add(id_1)
-            nodes_in_edges.add(id_2)
+            id1 = row['id_1']
+            id2 = row['id_2']
+            conexoes.append((id1, id2))
     
-    print(f"Loaded {len(all_edges)} total edges involving {len(nodes_in_edges)} unique nodes")
+    print(f"Carregadas {len(conexoes)} conexões")
     
-    print(f"Selecting {max_nodes} most connected nodes to maximize edge coverage...")
-    from collections import Counter
-    node_frequency = Counter()
-    for id_1, id_2 in all_edges:
-        node_frequency[id_1] += 1
-        node_frequency[id_2] += 1
+    print("\nSelecionando os 5000 usuários mais conectados...")
+    contador = Counter()
+    for id1, id2 in conexoes:
+        contador[id1] += 1
+        contador[id2] += 1
     
-    most_connected = [node_id for node_id, _ in node_frequency.most_common(max_nodes)]
-    selected_nodes = set(most_connected)
+    top_usuarios = [id_u for id_u, _ in contador.most_common(5000)]
+    usuarios_selecionados = set(top_usuarios)
     
-    if len(selected_nodes) < max_nodes:
-        print(f"Need {max_nodes - len(selected_nodes)} more nodes to reach target...")
-        for node_id in all_node_info.keys():
-            if len(selected_nodes) >= max_nodes:
-                break
-            if node_id not in selected_nodes:
-                selected_nodes.add(node_id)
-    
-    print(f"Selected {len(selected_nodes)} nodes")
-    
-    print("Filtering edges to keep only those between selected nodes...")
-    valid_edges = []
-    for id_1, id_2 in all_edges:
-        if id_1 in selected_nodes and id_2 in selected_nodes:
-            valid_edges.append((id_1, id_2))
-            if len(valid_edges) >= max_edges:
+    print("\nFiltrando 20000 conexões válidas...")
+    conexoes_validas = []
+    for id1, id2 in conexoes:
+        if id1 in usuarios_selecionados and id2 in usuarios_selecionados:
+            conexoes_validas.append((id1, id2))
+            if len(conexoes_validas) >= 20000:
                 break
     
-    print(f"Kept {len(valid_edges)} valid edges (target: {max_edges})")
+    print(f"Selecionadas {len(conexoes_validas)} conexões")
     
-    if features_file:
-        print(f"\nLoading features from {features_file}...")
-        try:
-            with open(features_file, 'r', encoding='utf8') as f:
-                features = json.load(f)
-            for node_id, feature_list in features.items():
-                if node_id in all_node_info:
-                    all_node_info[node_id]['features'] = feature_list
-            print("Loaded features")
-        except Exception as e:
-            print(f"Warning: Could not load features: {e}")
+    print("\nConstruindo grafo...")
+    grafo = Graph(directed=True)
     
-    print(f"\nBuilding graph with {len(selected_nodes)} nodes and {len(valid_edges)} edges...")
-    graph = Graph(directed=True)
+    for id_usuario in usuarios_selecionados:
+        nome = usuarios.get(id_usuario, f"User_{id_usuario}")
+        grafo.add_node(nome)
     
-    for node_id in selected_nodes:
-        info = all_node_info[node_id]
-        label = f"{info['name']}_{info['label']}"
-        graph.add_node(label)
+    for id1, id2 in conexoes_validas:
+        nome1 = usuarios.get(id1, f"User_{id1}")
+        nome2 = usuarios.get(id2, f"User_{id2}")
+        grafo.add_edge(nome1, nome2, weight=1)
     
-    for id_1, id_2 in valid_edges:
-        info_1 = all_node_info[id_1]
-        info_2 = all_node_info[id_2]
-        label_1 = f"{info_1['name']}_{info_1['label']}"
-        label_2 = f"{info_2['name']}_{info_2['label']}"
-        graph.add_edge(label_1, label_2, weight=1)
+    print("\nGrafo criado:")
+    print(f"- {len(grafo.nodes())} nós")
+    print(f"- {len(list(grafo.edges()))} arestas")
     
-    print("\nFinal graph summary:")
-    print(f"- Total nodes: {len(graph.nodes())}")
-    print(f"- Total edges: {len(list(graph.edges()))}")
-    
-    return graph, all_node_info
+    return grafo
 
-def analyze_github_graph(graph, output_pajek="github_graph.net"):
-    print("\n=== ANALYZING GITHUB GRAPH ===")
+def analisar_grafo(grafo, arquivo_saida="github_graph.net"):
+    print("\n=== ANÁLISE DO GRAFO ===\n")
     
-    print(f"\nSaving to Pajek format: {output_pajek}")
-    graph.save_pajek(output_pajek)
+    print(f"Salvando em formato Pajek: {arquivo_saida}")
+    grafo.save_pajek(arquivo_saida)
     
-    print("\n--- Basic Properties ---")
-    print(f"Nodes: {len(graph.nodes())}")
-    print(f"Edges: {len(list(graph.edges()))}")
-    print(f"Directed: {graph.directed}")
+    print("\nPropriedades básicas:")
+    print(f"- Nós: {len(grafo.nodes())}")
+    print(f"5 primeiros nós: {grafo.nodes()[:5]}")
+    print(f"- Arestas: {len(list(grafo.edges()))}")
+    print(f"5 primeiras arestas: {list(grafo.edges())[:5]}")
+    print(f"- Direcionado: {'Sim' if grafo.directed else 'Não'}")
     
-    print("\n--- Connectivity Analysis ---")
-    print("Checking if graph is connected...")
-    is_connected = graph.is_connected()
-    print(f"Connected (weakly): {'Yes' if is_connected else 'No'}")
+    print("\nConectividade:")
+    if grafo.is_connected():
+        print("- O grafo é conexo")
+    else:
+        print("- O grafo NÃO é conexo")
+        componentes = grafo.components()
+        print(f"- Número de componentes: {len(componentes)}")
+        print(f"5 primeiros nós da maior componente: {list(max(componentes, key=len))[:5]}")
     
-    print("Finding connected components...")
-    components = graph.components()
-    print(f"Number of components: {len(components)}")
-    if len(components) > 1:
-        print("top 10 components with the most nodes:")
-        for comp in sorted(components, key=len, reverse=True)[:10]:
-           print(f"  {len(comp)} nodes: {list(comp)[:5]}")
+    print("\nPropriedades:")
+    print(f"- Euleriano: {'Sim' if grafo.is_eulerian() else 'Não'}")
+    print(f"- Cíclico: {'Sim' if grafo.is_cyclic() else 'Não'}")
     
-    print("\n--- Graph Properties ---")
-    print("Checking if graph is Eulerian...")
-    is_eulerian = graph.is_eulerian()
-    print(f"Eulerian: {'Yes' if is_eulerian else 'No'}")
+    print("\nCalculando centralidades...")
+    closeness = grafo.closeness_centrality()
+    betweenness = grafo.betweenness_centrality()
     
-    print("Checking if graph is cyclic...")
-    is_cyclic = graph.is_cyclic()
-    print(f"Cyclic: {'Yes' if is_cyclic else 'No'}")
-    
-    print("\n--- Centrality Analysis ---")
-    print("Computing closeness centrality...")
-    closeness = graph.closeness_centrality()
-    print("Closeness centrality computed!")
-    
+    print("\nTop 10 usuários por Centralidade de Proximidade:")
     top_closeness = sorted(closeness.items(), key=lambda x: x[1], reverse=True)[:10]
-    print("\nTop 10 nodes by closeness centrality:")
-    for node, score in top_closeness:
-        print(f"  {node}: {score:.6f}")
+    for i, (usuario, valor) in enumerate(top_closeness, 1):
+        print(f"  {i}. {usuario}: {valor:.6f}")
     
-    print("\nComputing betweenness centrality...")
-    betweenness = graph.betweenness_centrality()
-    print("Betweenness centrality computed!")
-    
+    print("\nTop 10 usuários por Centralidade de Intermediação:")
     top_betweenness = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:10]
-    print("\nTop 10 nodes by betweenness centrality:")
-    for node, score in top_betweenness:
-        print(f"  {node}: {score:.6f}")
+    for i, (usuario, valor) in enumerate(top_betweenness, 1):
+        print(f"  {i}. {usuario}: {valor:.6f}")
     
-    print("\n=== ANALYSIS COMPLETE ===")
-    print(f"Graph saved to: {output_pajek}")
-    
-    return {
-        'connected': is_connected,
-        'components': len(components),
-        'eulerian': is_eulerian,
-        'cyclic': is_cyclic,
-        'closeness': closeness,
-        'betweenness': betweenness
-    }
+    print("\n=== ANÁLISE CONCLUÍDA ===")
 
 if __name__ == "__main__":
-    graph, node_info = load_github_dataset(
-        edges_file="musae_git_edges.csv",
-        target_file="musae_git_target.csv",
-        features_file="musae_git_features.json"
-    )
-    
-    results = analyze_github_graph(graph, output_pajek="github_graph.net")
-
+    grafo = carregar_dataset_github()
+    analisar_grafo(grafo)
