@@ -1,6 +1,10 @@
 import csv
 from collections import Counter
+import matplotlib.pyplot as plt
+import networkx as nx
 from graph import Graph
+
+# TRATAMENTO DO DATASET -----------------------------------------------------------------------------------
 
 def carregar_dataset_github():
     print("=== CARREGANDO DATASET GITHUB ===\n")
@@ -27,8 +31,9 @@ def carregar_dataset_github():
     
     print(f"Carregadas {len(conexoes)} conexões")
     
+
     print("\nSelecionando os 5000 usuários mais conectados...")
-    contador = Counter()
+    contador = Counter() # o counter eh uma forma simples de contar quantas vezes cada no aparece nas conexoes
     for id1, id2 in conexoes:
         contador[id1] += 1
         contador[id2] += 1
@@ -38,22 +43,24 @@ def carregar_dataset_github():
     
     print("\nFiltrando 20000 conexões válidas...")
     conexoes_validas = []
-    for id1, id2 in conexoes:
-        if id1 in usuarios_selecionados and id2 in usuarios_selecionados:
+    for id1, id2 in conexoes: # pra cada conexao, verifica se os dois nos estao na lista de usuarios selecionados
+        if id1 in usuarios_selecionados and id2 in usuarios_selecionados: # se os dois nos estao na lista de usuarios selecionados, adiciona a conexao na lista de conexoes validas
             conexoes_validas.append((id1, id2))
             if len(conexoes_validas) >= 20000:
                 break
     
     print(f"Selecionadas {len(conexoes_validas)} conexões")
     
+    # FIM DO TRATAMENTO DO DATASET -----------------------------------------------------------------------------------
+    
     print("\nConstruindo grafo...")
     grafo = Graph(directed=True)
     
-    for id_usuario in usuarios_selecionados:
-        nome = usuarios.get(id_usuario, f"User_{id_usuario}")
+    for id_usuario in usuarios_selecionados: # para cada usuario selecionado, adiciona um no no grafo
+        nome = usuarios.get(id_usuario, f"User_{id_usuario}") # se o usuario nao tiver nome, usa o id como nome
         grafo.add_node(nome)
     
-    for id1, id2 in conexoes_validas:
+    for id1, id2 in conexoes_validas: # para cada conexao valida, adiciona uma aresta no grafo
         nome1 = usuarios.get(id1, f"User_{id1}")
         nome2 = usuarios.get(id2, f"User_{id2}")
         grafo.add_edge(nome1, nome2, weight=1)
@@ -104,6 +111,22 @@ def analisar_grafo(grafo, arquivo_saida="github_graph.net"):
     for i, (usuario, valor) in enumerate(top_betweenness, 1):
         print(f"  {i}. {usuario}: {valor:.6f}")
     
+    # PLOTAGEM DOS 20 USUARIOS MAIS CENTRALIZADOS (codigo gerado com IA) -----------------------------------------------------------------------------------
+    sample_nodes = [usuario for usuario, _ in sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:20]]
+    sample_graph = nx.DiGraph()
+    sample_graph.add_nodes_from(sample_nodes)
+    for u, v, w in grafo.edges():
+        if u in sample_nodes and v in sample_nodes:
+            sample_graph.add_edge(u, v, weight=w)
+    if sample_graph.number_of_edges() > 0:
+        pos = nx.spring_layout(sample_graph, seed=42)
+        edge_labels = nx.get_edge_attributes(sample_graph, "weight")
+        plt.figure(figsize=(10, 7))
+        nx.draw(sample_graph, pos=pos, with_labels=True, node_size=500, font_size=8)
+        nx.draw_networkx_edge_labels(sample_graph, pos, edge_labels=edge_labels, font_size=7)
+        plt.title("Sample of top betweenness nodes")
+        plt.show()
+
     print("\n=== ANÁLISE CONCLUÍDA ===")
 
 if __name__ == "__main__":
